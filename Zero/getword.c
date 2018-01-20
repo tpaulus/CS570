@@ -1,5 +1,7 @@
 //
 // Created by Tom Paulus on 1/18/18.
+// CS 570 -- Carroll
+// Due: 1/25/2018 8 PM
 //
 
 #define COMMENT_MARKER '#'
@@ -57,8 +59,7 @@ int getword(char *w) {
         return_value = word_length;
     }
 
-    *w = ((char) NULL); // Don't forget to Null Terminate!
-    // fixme getword.c:60:11: warning: cast from pointer to integer of different size [-Wpointer-to-int-cast]
+    *w = ((size_t) NULL); // Don't forget to Null Terminate!
 
     return return_value;
 }
