@@ -28,7 +28,8 @@ short is_meta_char(int c) {
     const int num_meta_chars = 5;
     const char meta_chars[] = {'<', '>', '|', '&', '#'};
 
-    for (int i = 0; i < num_meta_chars; ++i) {
+    int i = 0;
+    for (i; i < num_meta_chars; ++i) {
         if (meta_chars[i] == c) return TRUE;
     }
     return FALSE;
