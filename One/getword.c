@@ -1,8 +1,7 @@
 //
 // Created by Tom Paulus on 1/26/18.
 // CS 570 -- Carroll
-// Due: 1/25/2018 11 PM
-// TODO Fix Due Date when posted
+// Due: 2/9/2018 11 PM
 //
 
 #define COMMENT_MARKER '#'
@@ -16,6 +15,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "getword.h"
 
 /**
@@ -24,16 +24,15 @@
  * @param c Character
  * @return 1 if a Meta Character; 0 otherwise
  */
-short is_meta_char(int c) {
-    const int num_meta_chars = 5;
-    const char meta_chars[] = {'<', '>', '|', '&', '#'};
+int is_meta_char(int c);
 
-    int i = 0;
-    for (i; i < num_meta_chars; ++i) {
-        if (meta_chars[i] == c) return TRUE;
-    }
-    return FALSE;
-}
+/**
+ * Check if a given character sequence (string) is a Meta Character String
+ *
+ * @param c Character Array
+ * @return 1 if a Meta Character String; 0 otherwise
+ */
+int is_meta_char_str(char c[]);
 
 /**
  * Get a Word from the Standard In
@@ -45,31 +44,38 @@ int getword(char *w) {
     int word_length = 0;
     int return_value = 0;
     int iochar;
+    int prev_iochar = EOF;
 
     short escape_mode = FALSE;
 
     while ((iochar = getchar()) != EOF) {
         if (word_length == 0 && iochar == SPACE) continue; // Remove Initial Whitespace
 
-        // Process Meta Characters
-        short isMetaChar = is_meta_char(iochar);
-        if (!escape_mode && ((word_length > 0 && isMetaChar) || (word_length < 0 && !isMetaChar))) {
+// ==== Process Meta Characters ====
+        int meta_char = is_meta_char(iochar);
+        if (!escape_mode && ((word_length > 0 && meta_char) || (word_length < 0 && !meta_char))) {
             // Switch Between Meta and Regular Chanters - Stopping
             ungetc(iochar, stdin);
             return_value = word_length;
 
             break;
-        } else if (!escape_mode && isMetaChar) {
+        } else if (!escape_mode && meta_char) {
+            char last_two[3] = {(char) prev_iochar, (char) iochar, ((char) 0)};
+            if (word_length == -1 && !is_meta_char_str(last_two)) {
+                // Not a valid meta character string - stopping
+                ungetc(iochar, stdin);
+                return_value = word_length;
+
+                break;
+            }
+
             word_length--;
             *w = ((char) iochar);
             w++;
             escape_mode = FALSE;
 
-            continue;
-        }
-
-        // Process Regular Characters
-        if (!escape_mode && iochar == ESCAPE) {
+//  ==== Process Regular Characters ====
+        } else if (!escape_mode && iochar == ESCAPE) {
             // Process / Markers
             escape_mode = TRUE;
             continue;
@@ -82,12 +88,12 @@ int getword(char *w) {
             w++;
 
             break;
-        } else if (!escape_mode && word_length == 0 && iochar == NEW_LINE) {
+        } else if (word_length == 0 && iochar == NEW_LINE) {
             //Single New Line
             return_value = -10;
 
             break;
-        } else if (!escape_mode && (iochar == SPACE || iochar == NEW_LINE)) {
+        } else if ((!escape_mode && iochar == SPACE) || iochar == NEW_LINE) {
             // End of Word, Return Length
             return_value = word_length;
 
@@ -102,12 +108,16 @@ int getword(char *w) {
             word_length++;
             escape_mode = FALSE;
 
-            if (abs(word_length) > STORAGE - 1) {
+            if (abs(word_length) > STORAGE - 2) {
                 // Maximum length of storage array has been reached. Stopping Input Loop
+                return_value = word_length;
                 break;
             }
         }
+
+        prev_iochar = iochar;
     }
+
 
     if (word_length != 0 && iochar == EOF) {
         ungetc(iochar, stdin);
@@ -117,4 +127,41 @@ int getword(char *w) {
     *w = ((size_t) NULL); // Don't forget to Null Terminate!
 
     return return_value;
+}
+
+/**
+ * Check if a given character is a Meta Character
+ *
+ * @param c Character
+ * @return 1 if a Meta Character; 0 otherwise
+ */
+int is_meta_char(int c) {
+    const int num_meta_chars = 5;
+    const char meta_chars[] = {'<', '>', '|', '&'};
+
+    int i;
+    for (i = 0; i < num_meta_chars; ++i) {
+        if (meta_chars[i] == c) return TRUE;
+    }
+    return FALSE;
+}
+
+/**
+ * Check if a given character sequence (string) is a Meta Character String
+ *
+ * @param c Character Array
+ * @return 1 if a Meta Character String; 0 otherwise
+ */
+int is_meta_char_str(char c[]) {
+    const int num_meta_char_strs = 1;
+    const char *meta_char_strs[] = {"|&"};
+
+    int i;
+    for (i = 0; i < num_meta_char_strs; ++i) {
+        if (strcmp(c, meta_char_strs[i]) == 0) {
+            return TRUE;
+        }
+    }
+
+    return FALSE;
 }
