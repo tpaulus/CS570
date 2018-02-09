@@ -44,6 +44,7 @@ int getword(char *w) {
     int word_length = 0;
     int return_value = 0;
     int iochar;
+    int meta_char;
     int prev_iochar = EOF;
 
     short escape_mode = FALSE;
@@ -52,7 +53,7 @@ int getword(char *w) {
         if (word_length == 0 && iochar == SPACE) continue; // Remove Initial Whitespace
 
 // ==== Process Meta Characters ====
-        int meta_char = is_meta_char(iochar);
+        meta_char = is_meta_char(iochar);
         if (!escape_mode && ((word_length > 0 && meta_char) || (word_length < 0 && !meta_char))) {
             // Switch Between Meta and Regular Chanters - Stopping
             ungetc(iochar, stdin);
