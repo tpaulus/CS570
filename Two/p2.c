@@ -24,7 +24,7 @@
 #define TRUE 1
 #define FALSE 0
 
-#define DEBUG  // Uncomment to print Debug Statements
+//#define DEBUG  // Uncomment to print Debug Statements
 
 // Constants
 const int FOUT_FLAGS = O_CREAT | O_EXCL | O_APPEND | O_WRONLY;
