@@ -1,0 +1,6 @@
+I wrote this code myself, with some help from the material provided on the course website.
+I believe everything works perfectly under all conditions.
+
+The user may need to provide 2 EOF signals for Zero-line inputs, but this is a known issue.
+An extra prompt may be printed following Detached Commands (commands that end in "&")
+depending on the data that is left in the line following the "&".
