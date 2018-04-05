@@ -1,6 +1,12 @@
-I wrote this code myself, with some help from the material provided on the course website.
+I wrote the p3helper.c code myself, with some help from the material provided in the course reader.
 I believe everything works perfectly under all conditions.
 
-The user may need to provide 2 EOF signals for Zero-line inputs, but this is a known issue.
-An extra prompt may be printed following Detached Commands (commands that end in "&")
-depending on the data that is left in the line following the "&".
+Design:
+Every robot tries to create the Semaphore, but because of the "O_EXCL" flag that is set, only the first robot will be
+able to open/create the semaphore. The robot that is able to create the semaphore is the first robot, and it will create
+the count file. The Semaphore is initialized to 0, which causes the other robots to wait until it is released
+(incremented), letting the other robots start. The countfile has the number of widgets that have been placed.
+
+A new line needs to be printed if count % width is equal to one less than the width, and the last widget has been placed
+when count == nrRobots * quota - 1. Once the last widget has been placed, the countfile and the semaphore are unlinked
+to allow for a clean next run.
