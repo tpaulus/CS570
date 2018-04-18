@@ -489,14 +489,19 @@ int builtin_handler(char **args, int arg_len) {
         case 2:
             if (arg_len < 2) chdir(getenv("HOME"));
             else if (arg_len > 2) fprintf(stderr, "Too Many Args for cd\n");
-            else chdir(args[1]);
+            else {
+                if (chdir(args[1]) != 0)
+                    perror("Invalid Directory");
+            }
             return 1;
         case 3:
             for (i = 0; i < arg_len; i++) {
-                 if(strcmp(args[i], "-n") == 0)
-                     FLAG = FALSE;
-                 else if(strcmp(args[i], "-f") == 0)
-                     FLAG = TRUE;
+                if (strcmp(args[i], "-n") == 0)
+                    FLAG = FALSE;
+                else if (strcmp(args[i], "-f") == 0)
+                    FLAG = TRUE;
+                else
+                    num_effective_args++;
             }
 
             if (num_effective_args > 2) {
