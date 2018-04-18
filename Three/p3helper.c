@@ -26,9 +26,6 @@
 #include <assert.h>
 #include <errno.h>
 
-#define TRUE 1
-#define FALSE 0
-
 #define COUNTFILE_NAME "countfile"
 
 //#define DEBUG
@@ -51,6 +48,12 @@ void finish(void);
 
 /* General documentation for the following functions is in p3.h
  * Here you supply the code, and internal documentation:
+ *
+ * Each robot will call this function once to get things ready. Every robot tries to create the Semaphore,
+ * but because of the "O_EXCL" flag that is set, only the first robot will be able to open/create the semaphore.
+ * The robot that is able to create the semaphore is the first robot, and it will create the count file. The Semaphore
+ * is initialized to 0, which causes the other robots to wait until it is released (incremented), letting the other
+ * robots start. The countfile has the number of widgets that have been placed.
  */
 void initStudentStuff(void) {
     int count = 0;
@@ -84,6 +87,11 @@ void initStudentStuff(void) {
 #endif
 }
 
+/*
+ * Place Widget logic - called quota times by each robot.
+ * If the width is reached, an N character along with a new line is printed.
+ * For the last Widget, an F is printed (even if an N would be printed).
+ */
 void placeWidget(int n) {
     int count;
     int last = FALSE;
@@ -97,16 +105,16 @@ void placeWidget(int n) {
     // Place Widget
     printeger(n);
 
-    if (count % width == width - 1) {
-        // End of Line
-        printf("N\n");
-    }
+
     if (count == nrRobots * quota - 1) {
         // Last Widget
         last = TRUE;
 #ifdef DEBUG
         printf("\n%d: Placed last Widget - Setting Flag\n", getpid());
 #endif
+    } else if (count % width == width - 1) {
+        // End of Line
+        printf("N\n");
     }
 
     count++;
