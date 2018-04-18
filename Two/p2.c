@@ -458,6 +458,8 @@ void exec_piped(char **args1, char **args2) {
 int builtin_handler(char **args, int arg_len) {
     int NoOfBuiltinCmds = 4, i, switchBuiltinArg = 0;
     char *ListOfBuiltinCmds[NoOfBuiltinCmds];
+    int num_effective_args = 0;
+    int FLAG = FALSE;
 
     ListOfBuiltinCmds[0] = "exit";
     ListOfBuiltinCmds[1] = "cd";
@@ -490,12 +492,22 @@ int builtin_handler(char **args, int arg_len) {
             else chdir(args[1]);
             return 1;
         case 3:
-            if (arg_len > 2) {
+            for (i = 0; i < arg_len; i++) {
+                 if(strcmp(args[i], "-n") == 0)
+                     FLAG = FALSE;
+                 else if(strcmp(args[i], "-f") == 0)
+                     FLAG = TRUE;
+            }
+
+            if (num_effective_args > 2) {
                 fprintf(stderr, "Too Many Args for MV\n");
+                return 1;
+            } else if (num_effective_args < 2) {
+                fprintf(stderr, "Too Few Args for MV\n");
                 return 1;
             }
 
-            mv(args[1], args[2]);
+            mv(args[1], args[2], FLAG);
             return 1;
         case 4:
             openHelp();
@@ -512,28 +524,49 @@ int builtin_handler(char **args, int arg_len) {
  */
 void openHelp() {
     printf("\n***WELCOME TO P2 SHELL HELP***"
-                   "\n-Use the shell at your own risk..."
-                   "\nList of Builtin Commands supported:"
-                   "\n>cd"
-                   "\n>MV"
-                   "\n>exit"
-                   "\n>all other general commands available in UNIX shell"
-                   "\n>pipe handling"
-                   "\n>improper space handling\n");
+           "\n-Use the shell at your own risk..."
+           "\nList of Builtin Commands supported:"
+           "\n>cd"
+           "\n>MV"
+           "\n>exit"
+           "\n>all other general commands available in UNIX shell"
+           "\n>pipe handling"
+           "\n>improper space handling\n");
 }
 
 /**
  * File Move Built-In Command
  */
-void mv(char *source, char *destination) {
+void mv(char *source, char *destination, int FLAG_FORCE) {
 #ifdef DEBUG
     printf("Source - %s\n", source);
     printf("Destination - %s\n", destination);
 #endif
+
     if (link(source, destination) == 0) {
         if (unlink(source) != 0) {
             perror("Cannot unlink source file\n");
         }
+    } else if (is_directory(destination)) {
+        // Moving file to a directory
+        if (link(source, strcat(destination, file_name_from_path(source))) == 0) {
+            if (unlink(source) != 0) {
+                perror("Cannot unlink source file\n");
+            }
+        } else if (FLAG_FORCE) {
+            if (unlink(strcat(destination, file_name_from_path(source))) != 0)
+                perror("Cannot unlink destination file for overwriting\n");
+            else
+                mv(source, strcat(destination, file_name_from_path(source)), FALSE);
+        } else {
+            perror("Cannot move file - cannot establish link\n");
+        }
+    } else if (FLAG_FORCE) {
+        // Current Destination File Exists
+        if (unlink(destination) != 0)
+            perror("Cannot unlink destination file for overwriting\n");
+        else
+            mv(source, destination, FALSE);
     } else {
         perror("Cannot move file - cannot establish link\n");
     }
@@ -552,3 +585,22 @@ void signal_handler(int signum) {
 }
 
 #pragma clang diagnostic pop
+
+int is_directory(const char *path) {
+    struct stat statbuf;
+    if (stat(path, &statbuf) != 0)
+        return 0;
+    return S_ISDIR(statbuf.st_mode);
+}
+
+char *file_name_from_path(char *path) {
+    char *fn;
+    int offset = 0;
+
+    if (path[(strlen(path) - 1)] == '/')
+        offset = 1;
+
+    (fn = strrchr(path + offset, '/')) ? ++fn : (fn = path);
+
+    return fn;
+}

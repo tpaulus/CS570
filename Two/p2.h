@@ -58,5 +58,24 @@ void openHelp();
  *
  * @param source   Source File Path
  * @param destination Destination File Path
+ * @param FLAG_FORCE 1 if the move should be forced, else 0
  */
-void mv(char *source, char *destination);
+void mv(char *source, char *destination, int FLAG_FORCE);
+
+//  ==== Helper Functions ====
+
+/**
+ * Check whether or not a given path is a directory.
+ *
+ * @param path Path Char Array
+ * @return 1 if directory; else 0
+ */
+int is_directory(const char *path) ;
+
+/**
+ * Get the file name from a given path. Useful for determining the file name in a move command.
+ *
+ * @param path Path Char Array
+ * @return Char Array of the File Name (what follows the last '/')
+ */
+char* file_name_from_path(char *path);
