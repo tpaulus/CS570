@@ -30,10 +30,11 @@ void exec_simple(char **args, int arg_len);
 /**
  * Execute a Piped Set of Commands
  *
- * @param args1 First Command - Writes to the Pipe
- * @param args2 Second Command - Reads from the Pipe
+ * @param arg_sets Set of Arguments for Pipes
+ * @param pipe_types Pipe Types for the various commands; 1 for '|&'; 0 for '|'
+ * @param num_pipes Number of Pipes
  */
-void exec_piped(char **args1, char **args2);
+void exec_piped(char ***arg_sets, int *pipe_types, int num_pipes);
 
 /**
  * Prepare the shell for the next line to be supplied by the user.

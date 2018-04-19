@@ -24,7 +24,7 @@
 #define TRUE 1
 #define FALSE 0
 
-//#define DEBUG  // Uncomment to print Debug Statements
+#define DEBUG  // Uncomment to print Debug Statements
 
 // Constants
 const int FOUT_FLAGS = O_CREAT | O_EXCL | O_APPEND | O_WRONLY;
@@ -42,17 +42,20 @@ int FLAG_IN_REDIR = FALSE;      // <
 // Globals
 char *input_file = NULL;
 char *output_file = NULL;
-char *pipe_location = NULL;
 
 char user_input[STORAGE];
 char *parsed_line[MAXITEM];
-char **line_prt = parsed_line;
-char *arg_set_1[MAXITEM];
-char *arg_set_2[MAXITEM];
+char **line_ptr = parsed_line;
+
+char **arg_sets[10];
+int pipe_types[10];
+char *pipe_locations[10];
+int num_pipes;
 
 int main() {
-    int line_length;
-    int arg_set_1_length;
+    int line_length, i, arg_length;
+    char **arg_set;
+    char **beginning;
 
     setpgid(0, 0);
     (void) signal(SIGTERM, signal_handler);
@@ -84,23 +87,32 @@ int main() {
         else if (!FLAG_PIPE) exec_simple(parsed_line, line_length);
         else {
             // Split the args array into the part before the pipe and the part after the pipe
-            arg_set_1_length = 0;
-            while (pipe_location > *line_prt) {
-                arg_set_1_length++;
-                line_prt++;
 
-                if (arg_set_1_length > line_length) {
-                    fprintf(stderr, "Bad Format for Piped Command\n");
-                    FLAG_BAD_LINE = TRUE;
-                    break;
+            beginning = line_ptr;
+            arg_length = 0;
+            i = 0;
+            while (i <= num_pipes) {   // Number of Pipes + 1 for last command
+                if ((*line_ptr >= pipe_locations[i] && pipe_locations[i] != NULL) || *line_ptr == NULL) {
+                    // New Set of Arguments
+                    arg_set = (char **) malloc(sizeof(char **) * MAXITEM);
+                    memcpy(arg_set, beginning, sizeof(char **) * (line_ptr - beginning));
+                    arg_sets[i] = arg_set;
+
+                    // Prep for next set
+                    beginning = line_ptr;
+                    i++;
+                    arg_length = 0;
+                } else {
+                    line_ptr++;
+                    arg_length++;
                 }
             }
 
-            if (!FLAG_BAD_LINE) {
-                memcpy(arg_set_1, parsed_line, sizeof(parsed_line[1]) * arg_set_1_length);
-                memcpy(arg_set_2, parsed_line + arg_set_1_length,
-                       sizeof(parsed_line[1]) * (line_length - arg_set_1_length));
-                exec_piped(arg_set_1, arg_set_2);
+            if (num_pipes > 0) exec_piped(arg_sets, pipe_types, num_pipes);  // fixme
+
+            for (i = 0; i < num_pipes; i++) {
+                // Free Malloc-ed Space Above
+                free(arg_sets[i]);
             }
         }
     }
@@ -119,8 +131,8 @@ void init() {
 
     // Reset Args Array
     memset(&parsed_line, 0, sizeof parsed_line);
-    memset(&arg_set_1, 0, sizeof arg_set_1);
-    memset(&arg_set_2, 0, sizeof arg_set_2);
+    memset(&arg_sets, 0, sizeof arg_sets);
+    memset(&pipe_types, 0, sizeof pipe_types);
 
     // Reset Flags
     FLAG_BAD_LINE = FALSE;
@@ -134,8 +146,8 @@ void init() {
     // Reset Pipes
     input_file = NULL;
     output_file = NULL;
-    pipe_location = NULL;
-    line_prt = parsed_line;
+    line_ptr = parsed_line;
+    num_pipes = 0;
 }
 
 /**
@@ -144,7 +156,7 @@ void init() {
  * "user_input" array.
  */
 int parse(char **args) {
-    int word_length;
+    int word_length, pipe_type;
     char *s_prt = user_input;
     int input_length = 0; // Number of words entered by the user
 
@@ -180,11 +192,15 @@ int parse(char **args) {
                 FLAG_IN_REDIR = TRUE;
                 word_length = getword(s_prt);
                 continue;
-            } else if (*s_prt == '|') {
+            } else if (*s_prt == '|' || strcmp(s_prt, "|&") == 0) {
                 FLAG_PIPE = TRUE;
 
+                pipe_type = (strcmp(*line_ptr, "|&") == 0) ? 1 : 0; // Pipe Type 1 is a '|&' pipe
+
                 // Save pipe location
-                pipe_location = s_prt;
+                pipe_types[num_pipes] = pipe_type;
+                pipe_locations[num_pipes++] = s_prt;
+
                 s_prt += abs(word_length + 1);
                 word_length = getword(s_prt);
                 continue;
@@ -215,9 +231,8 @@ int parse(char **args) {
         }
 
         // Parse Regular Arguments
-        args[input_length] = s_prt; // Save Input Word
+        args[input_length++] = s_prt; // Save Input Word
         s_prt += abs(word_length + 1); // Move Input Buffer Pointer
-        input_length++; // Increment the Argument Counter
 
         word_length = getword(s_prt); // Get next word
     }
@@ -308,10 +323,11 @@ void exec_simple(char **args, int arg_len) {
 /**
  * Execute a Piped Command, where the output of the first command is redirected to the input of the next.
  */
-void exec_piped(char **args1, char **args2) {
+void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
+    // fixme
 #ifdef DEBUG
-    char **args1_ptr = args1;
-    char **args2_ptr = args2;
+    char **args1_ptr = arg_sets[0];
+    char **args2_ptr = arg_sets[num_pipes];
 
     printf("Arg Set 1 - ");
     while (*args1_ptr != NULL) {
@@ -329,7 +345,7 @@ void exec_piped(char **args1, char **args2) {
 
     // 0 is read end, 1 is write end
     int pipefd[2];
-    pid_t p1, p2;
+    pid_t p1, p2, pn;
     int input_fd = -1;
     int output_fd = -1;
 
@@ -406,8 +422,8 @@ void exec_piped(char **args1, char **args2) {
             // File Output Redirection
             if (FLAG_OUT_REDIR) dup2(output_fd, STDOUT_FILENO);
 
-            if (execvp(args2[0], args2) < 0) {
-                printf("\nCould not execute command 2 - %s", args2[0]);
+            if (execvp(arg_sets[num_pipes][0], arg_sets[num_pipes]) < 0) {
+                printf("\nCould not execute command 2 - %s", arg_sets[num_pipes][0]);
                 exit(0);
             }
         } else {
@@ -420,8 +436,8 @@ void exec_piped(char **args1, char **args2) {
             if (FLAG_IN_REDIR) dup2(input_fd, STDIN_FILENO);
 
             // Execute Child 1 Command
-            if (execvp(args1[0], args1) < 0) {
-                printf("\nCould not execute command 1 - %s", args1[0]);
+            if (execvp(arg_sets[0][0], arg_sets[0]) < 0) {
+                printf("\nCould not execute command 1 - %s", arg_sets[0][0]);
                 exit(0);
             } else if (!FLAG_DETACH) {
                 // Wait for forked child process to complete if process is attached to parent
@@ -445,7 +461,7 @@ void exec_piped(char **args1, char **args2) {
         }
     } else {
         // Print PID for child task
-        printf("%s [%d]\n", args1[0], p1);
+        printf("%s [%d]\n", arg_sets[0][0], p1);
     }
 
     if (input_fd != -1 && close(input_fd) != 0) perror("Could not close Input File Descriptor");
