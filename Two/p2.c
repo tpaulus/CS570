@@ -179,15 +179,18 @@ int parse(char **args) {
 
     word_length = getword(s_prt); // Get first word
     while (word_length != 0 && word_length != -10) {
-        if (FLAG_SCRIPT_MODE && FLAG_COMMENT) continue; // Skip Words after Comment Mark when reading in a file
+        if (FLAG_SCRIPT_MODE && FLAG_COMMENT) {
+            // Skip Words after Comment Mark when reading in a file
+            word_length = getword(s_prt);
+            continue;
+        }
         if (word_length < 0) {
             // Meta Characters
             if (*s_prt == '#') {
                 if (input_length == 0) {
                     FLAG_COMMENT = TRUE;
-                } else if (FLAG_SCRIPT_MODE) {
-                    FLAG_COMMENT = TRUE;
                 } else {
+                    if (FLAG_SCRIPT_MODE) FLAG_COMMENT = TRUE;
                     s_prt += abs(word_length + 1);
                     word_length = getword(s_prt);
                     continue;
@@ -260,7 +263,7 @@ int parse(char **args) {
     if (word_length == 0) FLAG_EOF = TRUE; // EOF Received
     if (FLAG_BAD_LINE) input_length = -1;
 
-    return !FLAG_COMMENT || FLAG_DETACH ? input_length : 0; // Return Length 0 if comment line
+    return !FLAG_COMMENT || FLAG_SCRIPT_MODE ? input_length : 0; // Return Length 0 if comment line
 }
 
 #pragma clang diagnostic push
@@ -544,10 +547,10 @@ int builtin_handler(char **args, int arg_len) {
     ListOfBuiltinCmds[3] = "help";
 
 #ifdef DEBUG
-    int j;
+    int k;
     printf("%d arguments - ", arg_len);
-    for (j = 0; j < arg_len; ++j) {
-        printf("%s, ", args[j]);
+    for (k = 0; k < arg_len; ++k) {
+        printf("%s, ", args[k]);
     }
     printf("\n");
 #endif
@@ -580,7 +583,7 @@ int builtin_handler(char **args, int arg_len) {
                     FLAG = TRUE;
                 else {
                     num_effective_args++;
-                    if (j < 2){
+                    if (j < 2) {
                         mv_args[j++] = args[i];
                     }
                 }
