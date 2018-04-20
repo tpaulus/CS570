@@ -24,7 +24,7 @@
 #define TRUE 1
 #define FALSE 0
 
-#define DEBUG  // Uncomment to print Debug Statements
+//#define DEBUG  // Uncomment to print Debug Statements
 
 // Constants
 const int FOUT_FLAGS = O_CREAT | O_EXCL | O_APPEND | O_WRONLY;
@@ -32,6 +32,7 @@ const int FIN_FLAGS = O_RDONLY;
 
 // Line FLags
 int FLAG_BAD_LINE = FALSE;
+int FLAG_SCRIPT_MODE = FALSE;
 int FLAG_EOF = FALSE;           // EOF
 int FLAG_COMMENT = FALSE;       // #
 int FLAG_DETACH = FALSE;        // &
@@ -59,6 +60,8 @@ int main() {
 
     setpgid(0, 0);
     (void) signal(SIGTERM, signal_handler);
+
+    // TODO Script Mode
 
     for (;;) {
         init();
@@ -127,15 +130,17 @@ int main() {
  * Print Prompt, Reset Flags and Clear Argument Arrays
  */
 void init() {
-    printf("p2: ");
+    if (!FLAG_SCRIPT_MODE) printf("p2: ");  // Suppress Prompt for Script Mode
 
     // Reset Args Array
     memset(&parsed_line, 0, sizeof parsed_line);
     memset(&arg_sets, 0, sizeof arg_sets);
     memset(&pipe_types, 0, sizeof pipe_types);
+    memset(&pipe_locations, 0, sizeof pipe_locations);
 
     // Reset Flags
     FLAG_BAD_LINE = FALSE;
+    FLAG_SCRIPT_MODE = FALSE;
     FLAG_EOF = FALSE;
     FLAG_COMMENT = FALSE;
     FLAG_DETACH = FALSE;
@@ -162,10 +167,13 @@ int parse(char **args) {
 
     word_length = getword(s_prt); // Get first word
     while (word_length != 0 && word_length != -10) {
+        if (FLAG_SCRIPT_MODE && FLAG_COMMENT) continue; // Skip Words after Comment Mark when reading in a file
         if (word_length < 0) {
             // Meta Characters
             if (*s_prt == '#') {
                 if (input_length == 0) {
+                    FLAG_COMMENT = TRUE;
+                } else if (FLAG_SCRIPT_MODE) {
                     FLAG_COMMENT = TRUE;
                 } else {
                     s_prt += abs(word_length + 1);
@@ -240,7 +248,7 @@ int parse(char **args) {
     if (word_length == 0) FLAG_EOF = TRUE; // EOF Received
     if (FLAG_BAD_LINE) input_length = -1;
 
-    return !FLAG_COMMENT ? input_length : 0; // Return Length 0 if comment line
+    return !FLAG_COMMENT || FLAG_DETACH ? input_length : 0; // Return Length 0 if comment line
 }
 
 #pragma clang diagnostic push
@@ -324,7 +332,13 @@ void exec_simple(char **args, int arg_len) {
  * Execute a Piped Command, where the output of the first command is redirected to the input of the next.
  */
 void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
-    // fixme
+    // 0 is read end, 1 is write end
+    int pipefds[num_pipes][2];
+
+    pid_t p_child;
+    int input_fd = -1;
+    int output_fd = -1;
+
 #ifdef DEBUG
     char **args1_ptr = arg_sets[0];
     char **args2_ptr = arg_sets[num_pipes];
@@ -342,12 +356,6 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
     }
     printf("\n");
 #endif
-
-    // 0 is read end, 1 is write end
-    int pipefd[2];
-    pid_t p1, p2, pn;
-    int input_fd = -1;
-    int output_fd = -1;
 
     if (FLAG_DETACH && !FLAG_IN_REDIR) {
         // Redirect Input to /dev/null for Detached Child
@@ -371,89 +379,129 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
 
     // Fork Child 1
     fflush(stdout);
-    p1 = fork();
-    if (p1 < 0) {
+    fflush(stderr);
+    p_child = fork();
+    if (p_child < 0) {
         printf("\nCould not fork");
         return;
     }
 
 #ifdef DEBUG
-    if (p1 != 0) {
-        printf("Child 1 PID - %d\n", p1);
+    if (p_child != 0) {
+        printf("Child 1 PID - %d\n", p_child);
     } else {
         printf("I am Pipe Child 1!\n");
     }
 #endif
 
-    if (p1 == 0) {
+    if (p_child == 0) {
         // Child 1 executing...
 
         // Make Pipe
-        if (pipe(pipefd) < 0) {
+        if (pipe(pipefds[0]) < 0) {
             perror("\nPipe could not be initialized");
             return;
         }
 
         // Fork Child 2
         fflush(stdout);
-        p2 = fork();
+        fflush(stderr);
+        p_child = fork();
 
-        if (p2 < 0) {
+        if (p_child < 0) {
             printf("\nCould not fork");
             return;
         }
 
 #ifdef DEBUG
-        if (p2 != 0) {
-            printf("Child 2 PID - %d\n", p2);
+        if (p_child != 0) {
+            printf("Child 2 PID - %d\n", p_child);
         } else {
             printf("I am Pipe Child 2!\n");
         }
 #endif
 
         // Child 2 executing
-        if (p2 == 0) {
+        if (p_child == 0) {
+            // Child 2 Executable Code
 
+            if (pipe(pipefds[1]) < 0) {
+                perror("\nPipe could not be initialized");
+                return;
+            }
+
+            // Fork Child 3
+            fflush(stdout);
+            fflush(stderr);
+            p_child = fork();
+            if (p_child < 0) {
+                printf("\nCould not fork");
+                return;
+            }
+
+#ifdef DEBUG
+            if (p_child != 0) {
+                printf("Child 3 PID - %d\n", p_child);
+            } else {
+                printf("I am Pipe Child 3!\n");
+            }
+#endif
+
+            if (p_child == 0) {
+                // Child 3 Executable Code
+
+                // It only needs to write at the write end
+                dup2(pipefds[1][1], STDOUT_FILENO);
+                if (pipe_types[0] == 1) dup2(pipefds[1][1], STDERR_FILENO);
+                close(pipefds[1][0]);
+                close(pipefds[1][1]);
+
+                // File Input Redirection
+                if (FLAG_IN_REDIR) dup2(input_fd, STDIN_FILENO);
+
+                // Execute Child 1 Command
+                if (execvp(arg_sets[0][0], arg_sets[0]) < 0) {
+                    printf("\nCould not execute command 1 - %s", arg_sets[0][0]);
+                    exit(0);
+                }
+            } else {
+                // Child 2 Executable Code
+
+                dup2(pipefds[1][0], STDIN_FILENO);  // From Child 3
+                dup2(pipefds[0][1], STDOUT_FILENO);  // To Child 1
+                if (pipe_types[1] == 1) dup2(pipefds[0][1], STDERR_FILENO);
+
+                close(pipefds[0][0]);
+                close(pipefds[1][0]);
+                close(pipefds[0][1]);
+                close(pipefds[1][1]);
+
+                if (execvp(arg_sets[1][0], arg_sets[1]) < 0) {
+                    printf("\nCould not execute command 2 - %s", arg_sets[1][0]);
+                    exit(0);
+                }
+            }
+        } else {
+            // Child 1 Executable Code
             // It only needs to read at the read end
-            close(pipefd[1]);
-            dup2(pipefd[0], STDIN_FILENO);
-            close(pipefd[0]);
+
+            dup2(pipefds[0][0], STDIN_FILENO);
+
+            close(pipefds[0][1]);
+            close(pipefds[0][0]);
 
             // File Output Redirection
             if (FLAG_OUT_REDIR) dup2(output_fd, STDOUT_FILENO);
 
             if (execvp(arg_sets[num_pipes][0], arg_sets[num_pipes]) < 0) {
-                printf("\nCould not execute command 2 - %s", arg_sets[num_pipes][0]);
+                printf("\nCould not execute command 3 - %s", arg_sets[num_pipes][0]);
                 exit(0);
-            }
-        } else {
-            // It only needs to write at the write end
-            close(pipefd[0]);
-            dup2(pipefd[1], STDOUT_FILENO);
-            close(pipefd[1]);
-
-            // File Input Redirection
-            if (FLAG_IN_REDIR) dup2(input_fd, STDIN_FILENO);
-
-            // Execute Child 1 Command
-            if (execvp(arg_sets[0][0], arg_sets[0]) < 0) {
-                printf("\nCould not execute command 1 - %s", arg_sets[0][0]);
-                exit(0);
-            } else if (!FLAG_DETACH) {
-                // Wait for forked child process to complete if process is attached to parent
-                pid_t completed_child = 0;
-                while (completed_child != p1) {
-                    completed_child = wait(NULL);
-#ifdef DEBUG
-                    printf("PID %d just completed\n", completed_child);
-#endif
-                }
             }
         }
     } else if (!FLAG_DETACH) {
         // Wait for forked child process to complete if process is attached to parent
         pid_t completed_child = 0;
-        while (completed_child != p1) {
+        while (completed_child != p_child) {
             completed_child = wait(NULL);
 #ifdef DEBUG
             printf("PID %d just completed\n", completed_child);
@@ -461,7 +509,7 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
         }
     } else {
         // Print PID for child task
-        printf("%s [%d]\n", arg_sets[0][0], p1);
+        printf("%s [%d]\n", arg_sets[0][0], p_child);
     }
 
     if (input_fd != -1 && close(input_fd) != 0) perror("Could not close Input File Descriptor");
