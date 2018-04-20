@@ -32,7 +32,13 @@ int getword(char *w) {
     short escape_mode = FALSE;
 
     while ((iochar = getchar()) != EOF) {
-        if (word_length == 0 && iochar == SPACE) continue; // Remove Initial Whitespace
+        if (escape_mode && (iochar == SPACE || iochar == NEW_LINE)) {
+            // Escape Character wasn't actually meant to escape a character
+            *w = ((char) ESCAPE);
+            w++;
+            word_length++;
+            escape_mode = FALSE;
+        } else if (word_length == 0 && iochar == SPACE) continue; // Remove Initial Whitespace
 
 // ==== Process Meta Characters ====
         meta_char = is_meta_char(iochar);
