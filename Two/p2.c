@@ -21,10 +21,12 @@
 #include "p2.h"
 #include "getword.h"
 
+#define MAX_PIPES 10
+
 #define TRUE 1
 #define FALSE 0
 
-//#define DEBUG  // Uncomment to print Debug Statements
+#define DEBUG  // Uncomment to print Debug Statements
 
 // Constants
 const int FOUT_FLAGS = O_CREAT | O_EXCL | O_APPEND | O_WRONLY;
@@ -48,9 +50,9 @@ char user_input[STORAGE];
 char *parsed_line[MAXITEM];
 char **line_ptr = parsed_line;
 
-char **arg_sets[10];
-int pipe_types[10];
-char *pipe_locations[10];
+char **arg_sets[MAX_PIPES + 1];
+int pipe_types[MAX_PIPES];
+char *pipe_locations[MAX_PIPES];
 int num_pipes;
 
 int main() {
@@ -336,8 +338,9 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
     int pipefds[num_pipes][2];
 
     pid_t p_child;
-    int input_fd = -1;
-    int output_fd = -1;
+    int input_fd;
+    int output_fd;
+    int i;
 
 #ifdef DEBUG
     char **args1_ptr = arg_sets[0];
@@ -356,26 +359,6 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
     }
     printf("\n");
 #endif
-
-    if (FLAG_DETACH && !FLAG_IN_REDIR) {
-        // Redirect Input to /dev/null for Detached Child
-        FLAG_IN_REDIR = TRUE;
-        input_file = "/dev/null";
-    }
-
-    if (FLAG_IN_REDIR) {
-        if ((input_fd = open(input_file, FIN_FLAGS, S_IRUSR | S_IWUSR)) < 0) {
-            perror("Could not set input redirection file");
-            return;
-        }
-    }
-
-    if (FLAG_OUT_REDIR) {
-        if ((output_fd = open(output_file, FOUT_FLAGS, S_IRUSR | S_IWUSR)) < 0) {
-            perror("Could not set output redirection file");
-            return;
-        }
-    }
 
     // Fork Child 1
     fflush(stdout);
@@ -423,63 +406,74 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
 
         // Child 2 executing
         if (p_child == 0) {
-            // Child 2 Executable Code
-
-            if (pipe(pipefds[1]) < 0) {
-                perror("\nPipe could not be initialized");
-                return;
-            }
-
-            // Fork Child 3
-            fflush(stdout);
-            fflush(stderr);
-            p_child = fork();
-            if (p_child < 0) {
-                printf("\nCould not fork");
-                return;
-            }
-
-#ifdef DEBUG
-            if (p_child != 0) {
-                printf("Child 3 PID - %d\n", p_child);
-            } else {
-                printf("I am Pipe Child 3!\n");
-            }
-#endif
-
-            if (p_child == 0) {
-                // Child 3 Executable Code
-
-                // It only needs to write at the write end
-                dup2(pipefds[1][1], STDOUT_FILENO);
-                if (pipe_types[0] == 1) dup2(pipefds[1][1], STDERR_FILENO);
-                close(pipefds[1][0]);
-                close(pipefds[1][1]);
-
-                // File Input Redirection
-                if (FLAG_IN_REDIR) dup2(input_fd, STDIN_FILENO);
-
-                // Execute Child 1 Command
-                if (execvp(arg_sets[0][0], arg_sets[0]) < 0) {
-                    printf("\nCould not execute command 1 - %s", arg_sets[0][0]);
-                    exit(0);
+            for (i = 1; i < num_pipes; i++) {
+                // Middle Children
+                if (pipe(pipefds[i]) < 0) {
+                    perror("\nPipe could not be initialized");
+                    return;
                 }
-            } else {
-                // Child 2 Executable Code
 
-                dup2(pipefds[1][0], STDIN_FILENO);  // From Child 3
-                dup2(pipefds[0][1], STDOUT_FILENO);  // To Child 1
-                if (pipe_types[1] == 1) dup2(pipefds[0][1], STDERR_FILENO);
-
-                close(pipefds[0][0]);
-                close(pipefds[1][0]);
-                close(pipefds[0][1]);
-                close(pipefds[1][1]);
-
-                if (execvp(arg_sets[1][0], arg_sets[1]) < 0) {
-                    printf("\nCould not execute command 2 - %s", arg_sets[1][0]);
-                    exit(0);
+                // Fork Child 3
+                fflush(stdout);
+                fflush(stderr);
+                p_child = fork();
+                if (p_child < 0) {
+                    printf("\nCould not fork");
+                    return;
                 }
+
+                // Loop will continue for forked child, which will increment i and continue on
+                if (p_child != 0) {
+                    // Child 2 Executable Code
+
+                    printf("Parent Pipe %d: %d\n", pipefds[i - 1][0], pipefds[i - 1][1]);
+                    printf("Pipe %d: %d\n", pipefds[i][0], pipefds[i][1]);
+                    fflush(stdout);
+
+                    dup2(pipefds[i][0], STDIN_FILENO);  // From i+1 Child
+                    dup2(pipefds[i - 1][1], STDOUT_FILENO);  // To i - 1 Child
+                    if (pipe_types[i] == 1) dup2(pipefds[i - 1][1], STDERR_FILENO);
+
+                    close(pipefds[i - 1][0]);
+                    close(pipefds[i][0]);
+                    close(pipefds[i - 1][1]);
+                    close(pipefds[i][1]);
+
+                    if (execvp(arg_sets[num_pipes - i][0], arg_sets[num_pipes - i]) < 0) {
+                        printf("\nCould not execute command %d - %s", i, arg_sets[num_pipes - i][0]);
+                        exit(0);
+                    }
+                }
+            }
+
+            // Last Child Executable Code
+
+            // It only needs to write at the write end
+            dup2(pipefds[num_pipes - 1][1], STDOUT_FILENO);
+            if (pipe_types[0] == 1) dup2(pipefds[num_pipes - 1][1], STDERR_FILENO);
+            close(pipefds[num_pipes - 1][0]);
+            close(pipefds[num_pipes - 1][1]);
+
+            // File Input Redirection
+            if (FLAG_DETACH && !FLAG_IN_REDIR) {
+                // Redirect Input to /dev/null for Detached Child
+                FLAG_IN_REDIR = TRUE;
+                input_file = "/dev/null";
+            }
+
+            if (FLAG_IN_REDIR) {
+                if ((input_fd = open(input_file, FIN_FLAGS, S_IRUSR | S_IWUSR)) < 0) {
+                    perror("Could not set input redirection file");
+                    return;
+                }
+                dup2(input_fd, STDIN_FILENO);
+                if (close(input_fd) != 0) perror("Could not close Input File Descriptor");
+            }
+
+            // Execute Last Child Command
+            if (execvp(arg_sets[0][0], arg_sets[0]) < 0) {
+                printf("\nCould not execute command 1 - %s", arg_sets[0][0]);
+                exit(0);
             }
         } else {
             // Child 1 Executable Code
@@ -491,10 +485,18 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
             close(pipefds[0][0]);
 
             // File Output Redirection
-            if (FLAG_OUT_REDIR) dup2(output_fd, STDOUT_FILENO);
+            if (FLAG_OUT_REDIR) {
+                if ((output_fd = open(output_file, FOUT_FLAGS, S_IRUSR | S_IWUSR)) < 0) {
+                    perror("Could not set output redirection file");
+                    return;
+                }
+
+                dup2(output_fd, STDOUT_FILENO);
+                if (close(output_fd) != 0) perror("Could not close Output File Descriptor");
+            }
 
             if (execvp(arg_sets[num_pipes][0], arg_sets[num_pipes]) < 0) {
-                printf("\nCould not execute command 3 - %s", arg_sets[num_pipes][0]);
+                printf("\nCould not execute command %d - %s", num_pipes + 1, arg_sets[num_pipes][0]);
                 exit(0);
             }
         }
@@ -511,9 +513,6 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
         // Print PID for child task
         printf("%s [%d]\n", arg_sets[0][0], p_child);
     }
-
-    if (input_fd != -1 && close(input_fd) != 0) perror("Could not close Input File Descriptor");
-    if (output_fd != -1 && close(output_fd) != 0) perror("Could not close Output File Descriptor");
 }
 
 /**
