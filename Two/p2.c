@@ -1,7 +1,8 @@
 //:
 // Created by Tom Paulus on 2/22/18.
 // CS 570 -- Carroll
-// Due: 2/28/2018 11 PM
+// Due: 4/20/2018 11 PM for EC
+//      4/25/2018 11 PM for Regular Credit
 //
 
 #pragma clang diagnostic push
@@ -26,7 +27,7 @@
 #define TRUE 1
 #define FALSE 0
 
-#define DEBUG  // Uncomment to print Debug Statements
+//#define DEBUG  // Uncomment to print Debug Statements
 
 // Constants
 const int FOUT_FLAGS = O_CREAT | O_EXCL | O_APPEND | O_WRONLY;
@@ -34,7 +35,7 @@ const int FIN_FLAGS = O_RDONLY;
 
 // Line FLags
 int FLAG_BAD_LINE = FALSE;
-int FLAG_SCRIPT_MODE = FALSE;
+int FLAG_SCRIPT_MODE = FALSE;   // If a Script File is providing the lines; suppresses prompts
 int FLAG_EOF = FALSE;           // EOF
 int FLAG_COMMENT = FALSE;       // #
 int FLAG_DETACH = FALSE;        // &
@@ -55,15 +56,25 @@ int pipe_types[MAX_PIPES];
 char *pipe_locations[MAX_PIPES];
 int num_pipes;
 
-int main() {
-    int line_length, i, arg_length;
+int main(int argc, char **argv) {
+    int line_length, i, arg_length, arg_file;
     char **arg_set;
     char **beginning;
 
     setpgid(0, 0);
     (void) signal(SIGTERM, signal_handler);
 
-    // TODO Script Mode
+    // Argv:  File Name; Script File
+    if (argc > 1) {
+        if ((arg_file = open(argv[1], FIN_FLAGS)) == -1) {
+            fprintf(stderr, "Failed to open script. Double-check your arguments!\n");
+            exit(1);
+        } else {
+            dup2(arg_file, STDIN_FILENO);
+            close(arg_file);
+            FLAG_SCRIPT_MODE = TRUE;
+        }
+    }
 
     for (;;) {
         init();
@@ -123,7 +134,7 @@ int main() {
     }
 
     killpg(getpgrp(), SIGTERM);
-    printf("p2 terminated.\n");
+    if (!FLAG_SCRIPT_MODE) printf("p2 terminated.\n");
 
     _exit(0);
 }
@@ -142,7 +153,6 @@ void init() {
 
     // Reset Flags
     FLAG_BAD_LINE = FALSE;
-    FLAG_SCRIPT_MODE = FALSE;
     FLAG_EOF = FALSE;
     FLAG_COMMENT = FALSE;
     FLAG_DETACH = FALSE;
@@ -426,9 +436,11 @@ void exec_piped(char **arg_sets[], int pipe_types[], int num_pipes) {
                 if (p_child != 0) {
                     // Child 2 Executable Code
 
+#ifdef DEBUG
                     printf("Parent Pipe %d: %d\n", pipefds[i - 1][0], pipefds[i - 1][1]);
                     printf("Pipe %d: %d\n", pipefds[i][0], pipefds[i][1]);
                     fflush(stdout);
+#endif
 
                     dup2(pipefds[i][0], STDIN_FILENO);  // From i+1 Child
                     dup2(pipefds[i - 1][1], STDOUT_FILENO);  // To i - 1 Child
@@ -522,6 +534,8 @@ int builtin_handler(char **args, int arg_len) {
     int NoOfBuiltinCmds = 4, i, switchBuiltinArg = 0;
     char *ListOfBuiltinCmds[NoOfBuiltinCmds];
     int num_effective_args = 0;
+    char *mv_args[2];
+    int j = 0;
     int FLAG = FALSE;
 
     ListOfBuiltinCmds[0] = "exit";
@@ -558,13 +572,18 @@ int builtin_handler(char **args, int arg_len) {
             }
             return 1;
         case 3:
-            for (i = 0; i < arg_len; i++) {
+            // Skip first, which is MV
+            for (i = 1; i < arg_len; i++) {
                 if (strcmp(args[i], "-n") == 0)
                     FLAG = FALSE;
                 else if (strcmp(args[i], "-f") == 0)
                     FLAG = TRUE;
-                else
+                else {
                     num_effective_args++;
+                    if (j < 2){
+                        mv_args[j++] = args[i];
+                    }
+                }
             }
 
             if (num_effective_args > 2) {
@@ -575,7 +594,7 @@ int builtin_handler(char **args, int arg_len) {
                 return 1;
             }
 
-            mv(args[1], args[2], FLAG);
+            mv(mv_args[0], mv_args[1], FLAG);
             return 1;
         case 4:
             openHelp();

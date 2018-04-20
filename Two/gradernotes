@@ -4,3 +4,11 @@ I believe everything works perfectly under all conditions.
 The user may need to provide 2 EOF signals for Zero-line inputs, but this is a known issue.
 An extra prompt may be printed following Detached Commands (commands that end in "&")
 depending on the data that is left in the line following the "&".
+
+If executing p2, from within p2, the executable may need to be referenced with its respective
+local path, "./p2" rather than "p2", since the working directory for p2 is not on the user's path.
+
+Meta characters are processed in the order that they appear, so if a ">" is parsed immediately
+before a pipe character, what follows the pipe will be considered the redirection file, rather
+than the start of the next command. If you are indecisive and provide p2 with more than one of
+"-n" of "-f", the last option will be used.
