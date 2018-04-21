@@ -33,8 +33,8 @@ int getword(char *w) {
 
     while ((iochar = getchar()) != EOF) {
         if (escape_mode && (iochar == SPACE || iochar == NEW_LINE)) {
-            // Escape Character wasn't actually meant to escape a character
-            *w = ((char) ESCAPE);
+            // Escape Character was actually meant to escape a SPACE
+            *w = ((char) SPACE);
             w++;
             word_length++;
             escape_mode = FALSE;

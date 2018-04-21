@@ -134,9 +134,11 @@ int main(int argc, char **argv) {
     }
 
     killpg(getpgrp(), SIGTERM);
-    if (!FLAG_SCRIPT_MODE) printf("p2 terminated.\n");
+    printf("p2 terminated.\n");
+    fflush(stdout);
+    fflush(stderr);
 
-    _exit(0);
+    exit(0);
 }
 
 /**
@@ -218,7 +220,7 @@ int parse(char **args) {
             } else if (*s_prt == '|' || strcmp(s_prt, "|&") == 0) {
                 FLAG_PIPE = TRUE;
 
-                pipe_type = (strcmp(*line_ptr, "|&") == 0) ? 1 : 0; // Pipe Type 1 is a '|&' pipe
+                pipe_type = (strcmp(s_prt, "|&") == 0) ? 1 : 0; // Pipe Type 1 is a '|&' pipe
 
                 // Save pipe location
                 pipe_types[num_pipes] = pipe_type;
